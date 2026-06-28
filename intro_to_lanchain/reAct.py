@@ -21,14 +21,9 @@ Observation: The result of the action
 ... (this Thought/Action/Action Input/Observation can repeat multiple times)
 
 Thought: I now know the final answer.
-Final Answer: The final answer to the original input question.
+Final Answer: The final answer to the original input question.'''
 
-Begin!
-
-Question: {input}
-Thought: {agent_scratchpad}
-
-model=ChatGoogleGenerativeAI(model='gemini-3.5-flash',api_key=os.getenv('Gemini_api_key'),temperature=0.7,convert_system_message_to_human=True,response_format=template)'''
+model=ChatGoogleGenerativeAI(model='gemini-3.5-flash',api_key=os.getenv('Gemini_api_key'),temperature=0.7,convert_system_message_to_human=True,response_format=template)
 
 def multiply(a: int,b:int)->int:
     '''multiplying two numbers'''
