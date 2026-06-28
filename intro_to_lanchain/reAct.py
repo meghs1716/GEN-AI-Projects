@@ -1,29 +1,34 @@
-#react : agent with tools
-
-
-from langchain.agents import create_agent # built on langgraph
+# we can create reAct agents using langgraph in 2 ways:
+#1: using langchain.agents, 2: using state graph
+#1:
+from langchain.agents import create_agent
 import os
 from dotenv import load_dotenv
 load_dotenv()
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 template=''' 
-answer the following question,
-you have access to {tools}
+You are a helpful assistant with access to the following tools. 
 
-use this format
+{tools}
 
-question: {input}
-Thought : think about what to do
-action :decide which tool to use
-action input : input for tool
-observation: result
+To use a tool, please use the following format:
 
---repeat if needed--
-thought: i know the answer
-final answer: answer
-'''
-model=ChatGoogleGenerativeAI(model='gemini-3.5-flash',api_key=os.getenv('Gemini_api_key'),temperature=0.7,convert_system_message_to_human=True,response_format=template)
+Thought: You should always think about what to do.
+Action: The action to take, exactly one of [{tool_names}]
+Action Input: The input to the action
+Observation: The result of the action
+... (this Thought/Action/Action Input/Observation can repeat multiple times)
+
+Thought: I now know the final answer.
+Final Answer: The final answer to the original input question.
+
+Begin!
+
+Question: {input}
+Thought: {agent_scratchpad}
+
+model=ChatGoogleGenerativeAI(model='gemini-3.5-flash',api_key=os.getenv('Gemini_api_key'),temperature=0.7,convert_system_message_to_human=True,response_format=template)'''
 
 def multiply(a: int,b:int)->int:
     '''multiplying two numbers'''
@@ -51,3 +56,47 @@ result= agent.invoke({
     ]
 })
 print(result['messages'][-1].content)
+
+#2: using state graphs
+
+from typing import Annotated,Literal,Sequence
+from typing_extensions import TypedDict
+from langchain_core.messages import BaseMessage,SystemMessage
+from langchain_core.tools.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+
+@tool
+def multiply(a: int, b: int) -> int:
+    """Multiply two integers."""
+    return a * b
+
+tools = [multiply]
+tool_node = ToolNode(tools)
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(tools)
+
+def agent_node(state: AgentState):
+    return {"messages": [model.invoke([SystemMessage(content="Use tools when needed.")] + state["messages"])]}
+
+def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
+    return "tools" if state["messages"][-1].tool_calls else "__end__"
+
+
+workflow = StateGraph(AgentState)
+workflow.add_node("agent", agent_node)
+workflow.add_node("tools", tool_node)
+workflow.set_entry_point("agent")
+workflow.add_conditional_edges("agent", should_continue)
+workflow.add_edge("tools", "agent")
+app = workflow.compile()
+
+for chunk in app.stream({"messages": [("user", "What is 7 * 8?")]}, stream_mode="values"):
+    chunk["messages"][-1].pretty_print()
+
+
